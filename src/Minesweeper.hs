@@ -1,6 +1,7 @@
 module Minesweeper where
 
 import qualified Data.Map.Strict as M
+import Data.List hiding (group)
 
 type Pos = (Int, Int)
 type Count = Int
@@ -11,21 +12,30 @@ data Grid = Grid
   , container :: M.Map Pos Square
   }
 
-data Square = Bomb Status | Empty Status Count
-  deriving (Eq, Show)
+data Square = EmptyC
+            | EmptyO Int
+            | BombC
+            | BombO
+  deriving (Eq)
 
-data Status = Opened | Closed
-  deriving (Eq, Show)
+instance Show Square where
+  show EmptyC     = "O"
+  show (EmptyO n) = show n
+  show BombC      = "B"
+  show BombO      = "X"
+
+--data Status = Opened | Closed
+ -- deriving (Eq, Show)
 
 mkPoss :: Size -> [Pos]
 mkPoss size = [(i, j) | i <- range, j <- range]
   where range = [0 .. size-1]
 
 mkSquares :: Size -> [Square]
-mkSquares size = replicate (size^2) (Bomb Closed)
+mkSquares size = replicate (size^2) (BombC)
 
 mixed :: Size -> [Square]
-mixed size = (replicate (dim-5) (Empty Closed 0)) ++ (replicate 5 (Bomb Closed))
+mixed size = (replicate (dim-5) (EmptyC)) ++ (replicate 5 (BombC))
   where dim = size^2
 
 mkGrid :: Size -> (Size -> [Square]) -> Grid
@@ -54,11 +64,17 @@ mapWithKey f grid = grid { container = M.mapWithKey f . container $ grid }
 
 
 -- Displaying a grid
-display :: Grid -> IO ()
-display grid = mapM_ print $ group size $ sqs
+disp :: Grid -> IO ()
+disp = putStrLn . showRows
+
+showRow :: [Square] -> String
+showRow = intercalate " | " . map show
+
+showRows :: Grid -> String
+showRows grid = unlines . map showRow . group size $ sqrs
   where
-    sqs  = squares grid
-    ps   = positions grid
+    sqrs = squares grid
+    pss = positions grid
     size = gridSize grid
 
 group :: Int -> [a] -> [[a]]
@@ -84,12 +100,12 @@ bombCount :: Grid -> Pos -> Int
 bombCount grid = length . filter isBomb . map (value' grid) . adjacentPoss size
   where
     size = gridSize grid
-    isBomb (Bomb _) = True
+    isBomb (BombC) = True
     isBomb _        = False
 
 update :: Int -> Square -> Square
-update n (Empty x 0) = Empty x n
-update _ e           = e
+update n (EmptyC) = EmptyO n
+update _ x           = x
 
 update' :: Grid -> (Pos -> Square -> Square)
 update' grid = update . bombCount grid
