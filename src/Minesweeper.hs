@@ -74,7 +74,7 @@ showRow :: [Square] -> String
 showRow = intercalate " | " . map show
 
 showRows :: Grid -> String
-showRows grid = unlines . map showRow . group size $ sqrs
+showRows grid = ('\n':) . unlines . map showRow . group size $ sqrs
   where
     sqrs = squares grid
     pss = positions grid
@@ -99,6 +99,7 @@ pruneEdges size = filter limits
   where
     limits (a, b) = a >= 0 && a < size && b >= 0 && b < size
 
+-- | Count the number of adjacent bombs at a given coordinate in a grid
 bombCount :: Grid -> Pos -> Int
 bombCount grid = length . filter isBomb . map (value' grid) . adjacentPoss size
   where
@@ -106,16 +107,17 @@ bombCount grid = length . filter isBomb . map (value' grid) . adjacentPoss size
     isBomb (BombC) = True
     isBomb _        = False
 
-update :: Int -> Square -> Square
-update n (EmptyC) = EmptyO n
-update _ BombC    = BombO
-update _ x        = x
+-- Open a square and update its status accordingly
+-- open :: Square -> Square
+-- update n (EmptyC) = EmptyO n
+-- update _ BombC    = BombO
+-- update _ x        = x
 
-update' :: Grid -> (Pos -> Square -> Square)
-update' grid = update . bombCount grid
+-- update' :: Grid -> (Pos -> Square -> Square)
+-- update' grid = update . bombCount grid
 
-bombCounts :: Grid -> Grid
-bombCounts grid = mapWithKey (update' grid) grid
+-- bombCounts :: Grid -> Grid
+-- bombCounts grid = mapWithKey (update' grid) grid
 
 grid :: Grid
 grid = mkGrid 5 mixed
@@ -127,10 +129,11 @@ grid = mkGrid 5 mixed
 move :: Grid -> Pos -> Maybe Grid
 move grid pos = do
   sqr <- value grid pos
-  openBomb sqr
-  let count = bombCount grid pos
-  return $ grid { container = M.adjust (update count) pos (container grid) }
+  case sqr of
+    BombC -> Nothing
+    EmptyC -> let count = bombCount grid pos in
+      return $ grid { container = M.insert pos (EmptyO count) (container grid) }
 
-openBomb :: Square -> Maybe Square
-openBomb BombC = Nothing
-openBomb x     = Just x
+-- openBomb :: Square -> Maybe Square
+-- openBomb BombC = Nothing
+-- openBomb x     = Just x
