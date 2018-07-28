@@ -12,6 +12,9 @@ data Grid = Grid
   , container :: M.Map Pos Square
   }
 
+instance Show Grid where
+  show = showRows
+
 data Square = EmptyC
             | EmptyO Int
             | BombC
@@ -105,7 +108,8 @@ bombCount grid = length . filter isBomb . map (value' grid) . adjacentPoss size
 
 update :: Int -> Square -> Square
 update n (EmptyC) = EmptyO n
-update _ x           = x
+update _ BombC    = BombO
+update _ x        = x
 
 update' :: Grid -> (Pos -> Square -> Square)
 update' grid = update . bombCount grid
@@ -115,3 +119,18 @@ bombCounts grid = mapWithKey (update' grid) grid
 
 grid :: Grid
 grid = mkGrid 5 mixed
+
+
+-- Playing the game
+
+-- Open a grid
+move :: Grid -> Pos -> Maybe Grid
+move grid pos = do
+  sqr <- value grid pos
+  openBomb sqr
+  let count = bombCount grid pos
+  return $ grid { container = M.adjust (update count) pos (container grid) }
+
+openBomb :: Square -> Maybe Square
+openBomb BombC = Nothing
+openBomb x     = Just x
