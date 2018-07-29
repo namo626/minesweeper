@@ -103,6 +103,7 @@ pruneEdges size = filter limits
     limits (a, b) = a >= 0 && a < size && b >= 0 && b < size
 
 -- | Count the number of adjacent bombs at a given coordinate in a grid
+-- Index safety is guaranteed by adjacentPoss
 bombCount :: Grid -> Pos -> Int
 bombCount grid = length . filter isBomb . map (value' grid) . adjacentPoss size
   where
@@ -128,19 +129,8 @@ grid = mkGrid 5 mixed
 
 -- Playing the game
 
--- Open a grid
-move :: Grid -> Pos -> Maybe Grid
-move grid pos = do
-  sqr <- value grid pos
-  case sqr of
-    BombC  -> Nothing
-    EmptyC -> let count = bombCount grid pos in
-      return $ grid { container = M.insert pos (EmptyO count) (container grid) }
 
--- openBomb :: Square -> Maybe Square
--- openBomb BombC = Nothing
--- openBomb x     = Just x
-
+-- | Open a single cell, assuming the given position is valid
 open :: Grid -> Pos -> Grid
 open grid pos = case value' grid pos of
   BombC  -> replace pos (BombO) grid
@@ -150,20 +140,29 @@ open grid pos = case value' grid pos of
 openAll :: Grid -> Grid
 openAll grid = foldl' open grid (positions grid)
 
-move' :: Grid -> Pos -> Grid
-move' grid pos
-  | isOpen (value' grid pos) = grid
-  | bombCount grid pos == 0 = foldl' move' opened adjs
-  | otherwise               = opened
-  where
-    adjs   = adjacentPoss size pos
-    size   = gridSize grid
-    opened = open grid pos
+-- | Recursively open a cell and its neighbours; a "turn"
+-- Three cases can happen:
+-- 1. the given position is already open --> leave the whole grid alone
+-- 2. the closed position is empty && has no neighbouring bombs --> recursively open its neighbors
+-- 3. the closed position is empty && has neighboring bombs --> open just that position
+-- 4. the closed position is a bomb --> open just that position
+move :: Grid -> Pos -> Grid
+move grid pos =
+  let sqr    = value' grid pos
+      adjs   = adjacentPoss size pos
+      size   = gridSize grid
+      opened = open grid pos
+  in case sqr of
+    EmptyC   -> case bombCount grid pos of
+                  0 -> foldl' move opened adjs
+                  _ -> opened
+    _        -> opened
 
-isOpen :: Square -> Bool
-isOpen BombO      = True
-isOpen (EmptyO _) = True
-isOpen _          = False
 
-bombs :: Grid
-bombs = mkGrid
+-- | Player wins if there are no closed empty squares
+wins :: Grid -> Bool
+wins = not . any (== EmptyC) . container
+
+-- | Player loses if there's any open bomb
+loses :: Grid -> Bool
+loses = any (== BombO) . container
