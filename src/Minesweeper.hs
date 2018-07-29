@@ -43,7 +43,7 @@ mixed size = (replicate (dim-5) (EmptyC)) ++ (replicate 5 (BombC))
 
 mkGrid :: Size -> (Size -> [Square]) -> Grid
 mkGrid size f = Grid {
-  gridSize = size,
+  gridSize  = size,
   container = M.fromList pairs
   }
   where pairs = zip (mkPoss size) (f size)
@@ -64,6 +64,9 @@ value' grid pos = (container grid) M.! pos
 mapWithKey :: (Pos -> Square -> Square) -> Grid -> Grid
 mapWithKey f grid = grid { container = M.mapWithKey f . container $ grid }
 
+-- replace a value at a specific key
+replace :: Pos -> Square -> Grid -> Grid
+replace pos sqr grid = grid { container = M.insert pos sqr (container grid) }
 
 
 -- Displaying a grid
@@ -77,7 +80,7 @@ showRows :: Grid -> String
 showRows grid = ('\n':) . unlines . map showRow . group size $ sqrs
   where
     sqrs = squares grid
-    pss = positions grid
+    pss  = positions grid
     size = gridSize grid
 
 group :: Int -> [a] -> [[a]]
@@ -103,9 +106,9 @@ pruneEdges size = filter limits
 bombCount :: Grid -> Pos -> Int
 bombCount grid = length . filter isBomb . map (value' grid) . adjacentPoss size
   where
-    size = gridSize grid
+    size           = gridSize grid
     isBomb (BombC) = True
-    isBomb _        = False
+    isBomb _       = False
 
 -- Open a square and update its status accordingly
 -- open :: Square -> Square
@@ -130,10 +133,37 @@ move :: Grid -> Pos -> Maybe Grid
 move grid pos = do
   sqr <- value grid pos
   case sqr of
-    BombC -> Nothing
+    BombC  -> Nothing
     EmptyC -> let count = bombCount grid pos in
       return $ grid { container = M.insert pos (EmptyO count) (container grid) }
 
 -- openBomb :: Square -> Maybe Square
 -- openBomb BombC = Nothing
 -- openBomb x     = Just x
+
+open :: Grid -> Pos -> Grid
+open grid pos = case value' grid pos of
+  BombC  -> replace pos (BombO) grid
+  EmptyC -> replace pos (EmptyO (bombCount grid pos)) grid
+  _      -> grid
+
+openAll :: Grid -> Grid
+openAll grid = foldl' open grid (positions grid)
+
+move' :: Grid -> Pos -> Grid
+move' grid pos
+  | isOpen (value' grid pos) = grid
+  | bombCount grid pos == 0 = foldl' move' opened adjs
+  | otherwise               = opened
+  where
+    adjs   = adjacentPoss size pos
+    size   = gridSize grid
+    opened = open grid pos
+
+isOpen :: Square -> Bool
+isOpen BombO      = True
+isOpen (EmptyO _) = True
+isOpen _          = False
+
+bombs :: Grid
+bombs = mkGrid
