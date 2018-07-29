@@ -1,5 +1,7 @@
+
 module Minesweeper where
 
+import Control.Lens
 import qualified Data.Map.Strict as M
 import Data.List hiding (group)
 
@@ -8,9 +10,15 @@ type Count = Int
 type Size = Int
 
 data Grid = Grid
-  { gridSize :: Size
-  , container :: M.Map Pos Square
+  { _gridSize :: Size
+  , _container :: M.Map Pos Square
   }
+
+gridSize :: Lens' Grid Size
+gridSize = lens _gridSize (\grid s -> grid { _gridSize = s })
+
+container :: Lens' Grid (M.Map Pos Square)
+container = lens _container (\grid s -> grid { _container = s })
 
 instance Show Grid where
   show = showRows
@@ -43,30 +51,31 @@ mixed size = (replicate (dim-5) (EmptyC)) ++ (replicate 5 (BombC))
 
 mkGrid :: Size -> (Size -> [Square]) -> Grid
 mkGrid size f = Grid {
-  gridSize  = size,
-  container = M.fromList pairs
+  _gridSize  = size,
+  _container = M.fromList pairs
   }
   where pairs = zip (mkPoss size) (f size)
 
 -- Accessing grid entities
+
 squares :: Grid -> [Square]
-squares = M.elems . container
+squares = M.elems . view container
 
 positions :: Grid -> [Pos]
-positions = M.keys . container
+positions = M.keys . view container
 
 value :: Grid -> Pos -> Maybe Square
-value grid pos = (container grid) M.!? pos
+value grid pos = (view container grid) M.!? pos
 
 value' :: Grid -> Pos -> Square
-value' grid pos = (container grid) M.! pos
+value' grid pos = (view container grid) M.! pos
 
 mapWithKey :: (Pos -> Square -> Square) -> Grid -> Grid
-mapWithKey f grid = grid { container = M.mapWithKey f . container $ grid }
+mapWithKey f = over container (M.mapWithKey f)
 
 -- replace a value at a specific key
 replace :: Pos -> Square -> Grid -> Grid
-replace pos sqr grid = grid { container = M.insert pos sqr (container grid) }
+replace pos sqr = over container (M.insert pos sqr)
 
 
 -- Displaying a grid
@@ -81,7 +90,7 @@ showRows grid = ('\n':) . unlines . map showRow . group size $ sqrs
   where
     sqrs = squares grid
     pss  = positions grid
-    size = gridSize grid
+    size = view gridSize grid
 
 group :: Int -> [a] -> [[a]]
 group _ []    = []
@@ -93,7 +102,7 @@ adjacentPoss :: Size -> Pos -> [Pos]
 adjacentPoss size = pruneEdges size . adjacents
 
 adjacents :: Pos -> [Pos]
-adjacents (i, j) = [(x, y) | x <- map ($i) range, y <- map ($j) range, (x, y) /= (i, j)]
+adjacents (r, c) = [(x, y) | x <- map ($r) range, y <- map ($c) range, (x, y) /= (r, c)]
   where
     range = [(-1 +), (0 +), (1 +)]
 
@@ -107,7 +116,7 @@ pruneEdges size = filter limits
 bombCount :: Grid -> Pos -> Int
 bombCount grid = length . filter isBomb . map (value' grid) . adjacentPoss size
   where
-    size           = gridSize grid
+    size           = view gridSize grid
     isBomb (BombC) = True
     isBomb _       = False
 
@@ -150,7 +159,7 @@ move :: Grid -> Pos -> Grid
 move grid pos =
   let sqr    = value' grid pos
       adjs   = adjacentPoss size pos
-      size   = gridSize grid
+      size   = view gridSize grid
       opened = open grid pos
   in case sqr of
     EmptyC   -> case bombCount grid pos of
@@ -161,8 +170,8 @@ move grid pos =
 
 -- | Player wins if there are no closed empty squares
 wins :: Grid -> Bool
-wins = not . any (== EmptyC) . container
+wins = not . any (== EmptyC) . view container
 
 -- | Player loses if there's any open bomb
 loses :: Grid -> Bool
-loses = any (== BombO) . container
+loses = any (== BombO) . view container
