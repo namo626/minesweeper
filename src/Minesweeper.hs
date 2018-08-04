@@ -2,6 +2,7 @@
 module Minesweeper where
 
 import Control.Lens
+import System.Random (randomRs, mkStdGen)
 import qualified Data.Map.Strict as M
 import Data.List hiding (group)
 
@@ -9,13 +10,18 @@ type Pos = (Int, Int)
 type Count = Int
 type Size = Int
 
+-- Doesn't have to be a square
 data Grid = Grid
-  { _gridSize :: Size
+  { _numRows :: Size
+  , _numCols :: Size
   , _container :: M.Map Pos Square
   }
 
-gridSize :: Lens' Grid Size
-gridSize = lens _gridSize (\grid s -> grid { _gridSize = s })
+numRows :: Lens' Grid Size
+numRows = lens _numRows (\grid s -> grid { _numRows = s })
+
+numCols :: Lens' Grid Size
+numCols = lens _numCols (\grid s -> grid { _numCols = s })
 
 container :: Lens' Grid (M.Map Pos Square)
 container = lens _container (\grid s -> grid { _container = s })
@@ -30,7 +36,7 @@ data Square = EmptyC
   deriving (Eq)
 
 instance Show Square where
-  show EmptyC     = "O"
+  show EmptyC     = "E"
   show (EmptyO n) = show n
   show BombC      = "B"
   show BombO      = "X"
@@ -38,23 +44,37 @@ instance Show Square where
 --data Status = Opened | Closed
  -- deriving (Eq, Show)
 
-mkPoss :: Size -> [Pos]
-mkPoss size = [(i, j) | i <- range, j <- range]
-  where range = [0 .. size-1]
+mkPoss :: Size -> Size -> [Pos]
+mkPoss rows cols = [(i, j) | i <- rows', j <- cols']
+  where
+    rows' = [0 .. rows-1]
+    cols' = [0 .. cols-1]
 
 mkSquares :: Size -> [Square]
 mkSquares size = replicate (size^2) (BombC)
 
-mixed :: Size -> [Square]
-mixed size = (replicate (dim-5) (EmptyC)) ++ (replicate 5 (BombC))
-  where dim = size^2
+mixed :: Size -> Size -> [Square]
+mixed rows cols = replicate (len-5) EmptyC ++ replicate (5) BombC
+  where
+    len = rows * cols
 
-mkGrid :: Size -> (Size -> [Square]) -> Grid
-mkGrid size f = Grid {
-  _gridSize  = size,
+randSquares :: Int -> Size -> Size -> [Square]
+randSquares seed rows cols = map convert $ take len $ randomRs (1, 10) gen
+  where
+    gen = mkStdGen seed
+    len = rows * cols
+    convert :: Int -> Square
+    convert n
+      | n == 1 = BombC
+      | otherwise = EmptyC
+
+mkGrid :: Size -> Size -> (Size -> Size -> [Square]) -> Grid
+mkGrid rows cols f = Grid {
+  _numRows = rows,
+  _numCols = cols,
   _container = M.fromList pairs
   }
-  where pairs = zip (mkPoss size) (f size)
+  where pairs = zip (mkPoss rows cols) (f rows cols)
 
 -- Accessing grid entities
 
@@ -86,54 +106,43 @@ showRow :: [Square] -> String
 showRow = intercalate " | " . map show
 
 showRows :: Grid -> String
-showRows grid = ('\n':) . unlines . map showRow . group size $ sqrs
+showRows grid = ('\n':) . unlines . map showRow . group rowLength $ sqrs
   where
-    sqrs = squares grid
-    pss  = positions grid
-    size = view gridSize grid
+    sqrs      = squares grid
+    rowLength = view numCols grid
 
 group :: Int -> [a] -> [[a]]
 group _ []    = []
 group size xs = take size xs : group size (drop size xs)
 
 
--- Filling each cell with number of adjacent bombs
-adjacentPoss :: Size -> Pos -> [Pos]
-adjacentPoss size = pruneEdges size . adjacents
+-- | Return list of adjacent coordinates
+adjacentPoss :: Size -> Size -> Pos -> [Pos]
+adjacentPoss r c = pruneEdges r c . adjacents
 
 adjacents :: Pos -> [Pos]
 adjacents (r, c) = [(x, y) | x <- map ($r) range, y <- map ($c) range, (x, y) /= (r, c)]
   where
     range = [(-1 +), (0 +), (1 +)]
 
-pruneEdges :: Size -> [Pos] -> [Pos]
-pruneEdges size = filter limits
+pruneEdges :: Size -> Size -> [Pos] -> [Pos]
+pruneEdges r c = filter limits
   where
-    limits (a, b) = a >= 0 && a < size && b >= 0 && b < size
+    limits (a, b) = a >= 0 && a < r && b >= 0 && b < c
 
 -- | Count the number of adjacent bombs at a given coordinate in a grid
 -- Index safety is guaranteed by adjacentPoss
 bombCount :: Grid -> Pos -> Int
-bombCount grid = length . filter isBomb . map (value' grid) . adjacentPoss size
+bombCount grid = length . filter isBomb . map (value' grid) . adjacentPoss r c
   where
-    size           = view gridSize grid
+    r              = view numRows grid
+    c              = view numCols grid
     isBomb (BombC) = True
     isBomb _       = False
 
--- Open a square and update its status accordingly
--- open :: Square -> Square
--- update n (EmptyC) = EmptyO n
--- update _ BombC    = BombO
--- update _ x        = x
-
--- update' :: Grid -> (Pos -> Square -> Square)
--- update' grid = update . bombCount grid
-
--- bombCounts :: Grid -> Grid
--- bombCounts grid = mapWithKey (update' grid) grid
 
 grid :: Grid
-grid = mkGrid 5 mixed
+grid = mkGrid 10 8 (randSquares 0)
 
 
 -- Playing the game
@@ -158,8 +167,9 @@ openAll grid = foldl' open grid (positions grid)
 move :: Grid -> Pos -> Grid
 move grid pos =
   let sqr    = value' grid pos
-      adjs   = adjacentPoss size pos
-      size   = view gridSize grid
+      adjs   = adjacentPoss r c pos
+      r      = view numRows grid
+      c      = view numCols grid
       opened = open grid pos
   in case sqr of
     EmptyC   -> case bombCount grid pos of
@@ -175,3 +185,35 @@ wins = not . any (== EmptyC) . view container
 -- | Player loses if there's any open bomb
 loses :: Grid -> Bool
 loses = any (== BombO) . view container
+
+data Result = Win | Lose | Neither
+  deriving (Show, Eq)
+
+checkResult :: Grid -> Result
+checkResult grid
+  | loses grid = Lose
+  | wins grid  = Win
+  | otherwise  = Neither
+
+
+valid :: Grid -> Pos -> Bool
+valid grid (i, j) = 0 <= i && i < r && 0 <= j && j < c
+  where
+    r = view numRows grid
+    c = view numCols grid
+
+play :: Grid -> IO ()
+play grid = do
+  print grid
+  case checkResult grid of
+    Win     -> putStrLn "You won."
+    Lose    -> putStrLn "You lost."
+    Neither -> do
+      i <- read `fmap` getLine :: IO Int
+      j <- read `fmap` getLine :: IO Int
+      if valid grid (i, j) then do
+        let grid' = move grid (i, j)
+        play grid'
+      else do
+        putStrLn "Invalid position"
+        play grid
