@@ -26,7 +26,8 @@ source-repository head
 
 library
   exposed-modules:
-      Minesweeper
+                  Minesweeper,
+                  UI
   other-modules:
       Paths_minesweeper
   hs-source-dirs:
@@ -35,7 +36,9 @@ library
                 base >=4.7 && <5,
                 containers,
                 lens,
-                random
+                random,
+                brick,
+                vty
   default-language: Haskell2010
 
 executable minesweeper-exe
@@ -49,6 +52,8 @@ executable minesweeper-exe
   build-depends:
         base >=4.7 && <5
       , minesweeper
+      , brick
+      , vty
   default-language: Haskell2010
 
 test-suite minesweeper-test

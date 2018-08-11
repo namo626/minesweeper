@@ -15,6 +15,7 @@ data Grid = Grid
   { _numRows :: Size
   , _numCols :: Size
   , _container :: M.Map Pos Square
+  , _gridPoss :: [[Pos]]
   }
 
 numRows :: Lens' Grid Size
@@ -25,6 +26,9 @@ numCols = lens _numCols (\grid s -> grid { _numCols = s })
 
 container :: Lens' Grid (M.Map Pos Square)
 container = lens _container (\grid s -> grid { _container = s })
+
+gridPoss :: Lens' Grid [[Pos]]
+gridPoss = lens _gridPoss (\grid s -> grid { _gridPoss = s })
 
 instance Show Grid where
   show = showRows
@@ -70,11 +74,15 @@ randSquares seed rows cols = map convert $ take len $ randomRs (1, 10) gen
 
 mkGrid :: Size -> Size -> (Size -> Size -> [Square]) -> Grid
 mkGrid rows cols f = Grid {
-  _numRows = rows,
-  _numCols = cols,
-  _container = M.fromList pairs
+  _numRows   = rows,
+  _numCols   = cols,
+  _container = M.fromList pairs,
+  _gridPoss  = pss'
   }
-  where pairs = zip (mkPoss rows cols) (f rows cols)
+  where
+    pss   = mkPoss rows cols
+    pss'  = group cols pss
+    pairs = zip (pss) (f rows cols)
 
 -- Accessing grid entities
 
@@ -97,6 +105,10 @@ mapWithKey f = over container (M.mapWithKey f)
 replace :: Pos -> Square -> Grid -> Grid
 replace pos sqr = over container (M.insert pos sqr)
 
+groupSqrs :: Grid -> [[Square]]
+groupSqrs grid = group rowLength $ squares grid
+  where
+    rowLength = view numCols grid
 
 -- Displaying a grid
 disp :: Grid -> IO ()
@@ -105,11 +117,14 @@ disp = putStrLn . showRows
 showRow :: [Square] -> String
 showRow = intercalate " | " . map show
 
-showRows :: Grid -> String
-showRows grid = ('\n':) . unlines . map showRow . group rowLength $ sqrs
+convertRows :: Grid -> [String]
+convertRows grid = map showRow $ group rowLength $ sqrs
   where
     sqrs      = squares grid
     rowLength = view numCols grid
+
+showRows :: Grid -> String
+showRows = ('\n':) . unlines . convertRows
 
 group :: Int -> [a] -> [[a]]
 group _ []    = []
